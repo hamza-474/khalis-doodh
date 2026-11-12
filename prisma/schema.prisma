@@ -1,0 +1,279 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id                String   @id @default(uuid())
+  authId            String?  @unique
+  name              String
+  email             String?  @unique
+  phone             String?  @unique
+  preferredLanguage String   @default("en")
+  referralCode      String?  @unique
+  role              String   @default("customer") // admin, gwala, customer
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  gwalaProfile      GwalaProfile?
+  subscriptions     Subscription[]
+  deliveryRatings   DeliveryRating[]
+  complaints        Complaint[]
+  supportTickets    SupportTicket[]
+}
+
+model City {
+  id           String        @id @default(uuid())
+  name         String
+  province     String
+  isActive     Boolean       @default(true)
+  serviceAreas ServiceArea[]
+}
+
+model ServiceArea {
+  id        String  @id @default(uuid())
+  cityId    String
+  name      String
+  isActive  Boolean @default(true)
+
+  city               City                @relation(fields: [cityId], references: [id])
+  gwalaServiceAreas  GwalaServiceArea[]
+}
+
+model AreaWaitlist {
+  id             String   @id @default(uuid())
+  city           String
+  area           String
+  contactDetails String
+  consent        Boolean  @default(true)
+  timestamp      DateTime @default(now())
+}
+
+model GwalaProfile {
+  userId        String   @id
+  displayName   String
+  phone         String
+  cnicHash      String   @unique
+  maskedCnic    String
+  city          String
+  primaryArea   String
+  routeDetails  String?
+  price         Float
+  status        String   @default("pending") // pending, verified, rejected, suspended
+  qualityStatus String   @default("normal")
+  featured      Boolean  @default(false)
+  ratingAverage Float    @default(0)
+  ratingCount   Int      @default(0)
+  notes         String?
+  
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gwalaServiceAreas  GwalaServiceArea[]
+  gwalaDocuments     GwalaDocument[]
+  subscriptions      Subscription[]
+  deliveryRatings    DeliveryRating[]
+  complaints         Complaint[]
+  qualityAudits      GwalaQualityAudit[]
+}
+
+model GwalaServiceArea {
+  id            String  @id @default(uuid())
+  gwalaId       String
+  serviceAreaId String
+  city          String
+  area          String
+  slots         Int     @default(0)
+  isActive      Boolean @default(true)
+
+  gwalaProfile  GwalaProfile @relation(fields: [gwalaId], references: [userId], onDelete: Cascade)
+  serviceArea   ServiceArea  @relation(fields: [serviceAreaId], references: [id], onDelete: Cascade)
+}
+
+model GwalaDocument {
+  id          String   @id @default(uuid())
+  gwalaId     String
+  type        String   // cnic, area_proof
+  storageKey  String
+  filename    String
+  mimeType    String
+  size        Int
+  timestamp   DateTime @default(now())
+
+  gwalaProfile GwalaProfile @relation(fields: [gwalaId], references: [userId], onDelete: Cascade)
+}
+
+model Subscription {
+  id             String   @id @default(uuid())
+  customerId     String
+  gwalaId        String
+  city           String
+  area           String
+  addressLine    String
+  landmark       String?
+  mapLatitude    Float?
+  mapLongitude   Float?
+  plan           String   // weekly, monthly
+  litresPerDay   Int
+  deliveryDays   String   // JSON or comma separated string of days
+  startDate      DateTime
+  pricing        Float
+  paymentMethod  String
+  paymentStatus  String   @default("pending")
+  lifecycleStatus String  @default("active") // active, paused, cancelled
+  cancelReason   String?
+  
+  customer       User             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  gwalaProfile   GwalaProfile     @relation(fields: [gwalaId], references: [userId], onDelete: Cascade)
+  deliveryRecords DeliveryRecord[]
+  paymentRecords  PaymentRecord[]
+}
+
+model DeliveryRecord {
+  id             String   @id @default(uuid())
+  subscriptionId String
+  date           DateTime
+  status         String   @default("scheduled") // scheduled, out_for_delivery, delivered, missed, skipped
+  outForDelivery DateTime?
+  deliveredAt    DateTime?
+  proofStorageKey String?
+  notes          String?
+
+  subscription   Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  deliveryRating DeliveryRating?
+}
+
+model PaymentRecord {
+  id             String   @id @default(uuid())
+  subscriptionId String
+  amount         Float
+  method         String
+  status         String   @default("pending")
+  reference      String?
+  receiptCode    String   @unique
+
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+}
+
+model DeliveryRating {
+  id             String   @id @default(uuid())
+  deliveryId     String   @unique
+  customerId     String
+  gwalaId        String
+  score          Int
+  comment        String?
+
+  deliveryRecord DeliveryRecord @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  customer       User           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  gwalaProfile   GwalaProfile   @relation(fields: [gwalaId], references: [userId], onDelete: Cascade)
+}
+
+model Complaint {
+  id             String   @id @default(uuid())
+  customerId     String
+  gwalaId        String
+  deliveryId     String?
+  category       String
+  severity       String   @default("standard") // standard, serious
+  details        String
+  status         String   @default("open") // open, in_review, resolved, closed
+
+  customer       User         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  gwalaProfile   GwalaProfile @relation(fields: [gwalaId], references: [userId], onDelete: Cascade)
+}
+
+model SupportTicket {
+  id             String   @id @default(uuid())
+  customerId     String
+  subject        String
+  category       String
+  message        String
+  status         String   @default("open") // open, in_progress, resolved
+
+  customer       User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model ReferralCredit {
+  id           String   @id @default(uuid())
+  referrerId   String
+  referredId   String
+  referralCode String
+  credit       Float
+  status       String   @default("pending")
+}
+
+model GwalaQualityAudit {
+  id         String   @id @default(uuid())
+  gwalaId    String
+  auditDate  DateTime
+  auditorId  String
+  reading    String?
+  notes      String?
+  status     String   @default("planned") // planned, passed, follow_up
+
+  gwalaProfile GwalaProfile @relation(fields: [gwalaId], references: [userId], onDelete: Cascade)
+}
+
+model BroadcastAnnouncement {
+  id              String   @id @default(uuid())
+  audience        String   // all, customers, gwalas
+  title           String
+  message         String
+  deliveryChannel String   // email, push, in_app
+  adminUserId     String
+  timestamp       DateTime @default(now())
+}
+
+model MarketplaceNotification {
+  id             String   @id @default(uuid())
+  recipientId    String
+  recipientType  String   // user_id or group
+  kind           String
+  title          String
+  body           String
+  readStatus     Boolean  @default(false)
+  timestamp      DateTime @default(now())
+}
+
+model RiskCase {
+  id                     String    @id @default(uuid())
+  riskType               String    // quality, cnic, badge, rating, delivery, payment, privacy, etc.
+  severity               String    @default("medium") // low, medium, high, critical
+  status                 String    @default("open") // open, under_review, resolved, dismissed
+  affectedVendorId       String?
+  affectedSubscriptionId String?
+  reporterUserId         String?
+  evidenceSummary        String
+  internalNotes          String?
+  owner                  String    @default("admin_ops")
+  createdAt              DateTime  @default(now())
+  reviewedAt             DateTime?
+  resolution             String?
+  auditTrail             String?   // JSON string of events
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  details    String?
+  timestamp  DateTime @default(now())
+}
+
+model RevenueConfig {
+  id                      String   @id @default(uuid())
+  commissionRate          Float    @default(5.0) // Percentage
+  customerServiceFee      Float    @default(50.0) // Fixed PKR per month
+  gwalaPlanPrice          Float    @default(1500.0) // Monthly professional plan PKR
+  deliveryConvenienceFee  Float    @default(30.0) // Per delivery PKR
+  updatedAt               DateTime @updatedAt
+}
+
